@@ -8,9 +8,8 @@ const CONFIG = Object.freeze({
 });
 
 function doGet() {
-  return HtmlService.createTemplateFromFile('Index').evaluate().setTitle('Invoice OCR Inventory');
+  return jsonResponse_({ ok: true, service: 'invoice-ocr-google-bridge' });
 }
-function include(name) { return HtmlService.createHtmlOutputFromFile(name).getContent(); }
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents || '{}');
