@@ -2,7 +2,8 @@ const CONFIG = Object.freeze({
   SPREADSHEET_ID: '1ogoM0vXPndiRcjNgbkN3Bsitd5JTcoT4rsj7hkerZQ',
   SHEET_NAME: 'Sheet1',
   DRIVE_FOLDER_PROPERTY: 'INV_OCR_DRIVE_FOLDER_ID',
-  GEMINI_KEY_PROPERTY: 'GEMINI_API_KEY',
+  OCR_KEY_PROPERTY: 'OCR_API_KEY',
+  LEGACY_GEMINI_KEY_PROPERTY: 'GEMINI_API_KEY',
   MODEL: 'gemini-2.5-flash',
   MAX_BYTES: 12 * 1024 * 1024,
   HEADERS: ['ATimestamp','BInvoice No','CCompany Name','DTax ID','EInvoice Date','FSalesperson','GGPU Code','HTPU Code','IProduct Name','JQuantity','KUnit Price (Incl. VAT)','LTotal Price (Incl. VAT)','MGrand Total (Incl. VAT)','NImage URL']
@@ -17,10 +18,10 @@ function setup() {
   if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, CONFIG.HEADERS.length).setValues([CONFIG.HEADERS]);
   sheet.setFrozenRows(1);
   PropertiesService.getScriptProperties().setProperty('INV_OCR_SETUP_AT', new Date().toISOString());
-  return { ok: true, message: 'Setup complete. Set GEMINI_API_KEY and optionally INV_OCR_DRIVE_FOLDER_ID in Script Properties.' };
+  return { ok: true, message: 'Setup complete. Set OCR_API_KEY (or legacy GEMINI_API_KEY) and optionally INV_OCR_DRIVE_FOLDER_ID in Script Properties.' };
 }
 function getConfig() {
-  return { ok: true, data: { configured: Boolean(PropertiesService.getScriptProperties().getProperty(CONFIG.GEMINI_KEY_PROPERTY)), sheetName: CONFIG.SHEET_NAME } };
+  return { ok: true, data: { configured: Boolean(getOcrApiKey_()), sheetName: CONFIG.SHEET_NAME, provider: 'Gemini-compatible OCR endpoint' } };
 }
 function extractInvoice(payload) {
   try {
@@ -63,8 +64,8 @@ function saveDriveFile_(payload) {
   return { id: file.getId(), url: file.getUrl() };
 }
 function callGemini_(mimeType, base64) {
-  const key = PropertiesService.getScriptProperties().getProperty(CONFIG.GEMINI_KEY_PROPERTY);
-  if (!key) throw new Error('ยังไม่ได้ตั้งค่า GEMINI_API_KEY ใน Script Properties');
+  const key = getOcrApiKey_();
+  if (!key) throw new Error('ยังไม่ได้ตั้งค่า OCR_API_KEY ใน Script Properties');
   const schema = { type: 'OBJECT', properties: { invoiceNo:{type:'STRING'}, companyName:{type:'STRING'}, taxId:{type:'STRING'}, invoiceDate:{type:'STRING'}, salesperson:{type:'STRING'}, grandTotalInclVat:{type:'NUMBER'}, vatStatus:{type:'STRING', enum:['inclusive','exclusive','unknown']}, vatRate:{type:'NUMBER'}, items:{type:'ARRAY', items:{type:'OBJECT', properties:{gpuCode:{type:'STRING'}, tpuCode:{type:'STRING'}, productName:{type:'STRING'}, quantity:{type:'NUMBER'}, unitPriceInclVat:{type:'NUMBER'}, totalPriceInclVat:{type:'NUMBER'}}, required:['productName','quantity','unitPriceInclVat','totalPriceInclVat']} } }, required:['items'] };
   const prompt = 'อ่านข้อความจากใบกำกับภาษี/บิล inventory ภาษาไทยหรืออังกฤษ แล้วคืน JSON ตาม schema เท่านั้น. กำหนด vatStatus เป็น inclusive เมื่อเอกสารระบุว่ารวม VAT แล้ว, exclusive เมื่อมีหลักฐานชัดเจนว่าไม่รวม VAT, มิฉะนั้น unknown. ราคา unit/total/grand total ที่ส่งออกต้องเป็น VAT 7% inclusive เสมอ; ระบบจะคูณ 1.07 เมื่อ vatStatus=exclusive และจะแจ้งเตือนเมื่อ unknown. รหัส GPU/TPU เป็นตัวเลข 5-8 หลัก';
   const response = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + CONFIG.MODEL + ':generateContent?key=' + encodeURIComponent(key), { method:'post', contentType:'application/json', muteHttpExceptions:true, payload: JSON.stringify({ contents:[{parts:[{text:prompt},{inlineData:{mimeType:mimeType,data:base64}}]}], generationConfig:{responseMimeType:'application/json', responseSchema:schema, temperature:0.1} }) });
@@ -97,6 +98,10 @@ function normalizeInvoice_(data) {
   const sum = items.reduce((acc, item) => acc + item.totalPriceInclVat, 0);
   if (grandTotalInclVat && sum && Math.abs(sum - grandTotalInclVat) > 0.1) warnings.push('ยอดรวมสุทธิไม่ตรงกับผลรวมรายการ');
   return { invoice:{ invoiceNo:String(invoice.invoiceNo || ''), companyName:String(invoice.companyName || ''), taxId, invoiceDate:String(invoice.invoiceDate || ''), salesperson:String(invoice.salesperson || ''), grandTotalInclVat, imageUrl:String(invoice.imageUrl || data.imageUrl || ''), vatStatus }, items, warnings:[...new Set(warnings)] };
+}
+function getOcrApiKey_() {
+  const properties = PropertiesService.getScriptProperties();
+  return properties.getProperty(CONFIG.OCR_KEY_PROPERTY) || properties.getProperty(CONFIG.LEGACY_GEMINI_KEY_PROPERTY) || '';
 }
 function roundMoney_(n) { return Math.round(n * 100) / 100; }
 function sanitizeCell_(value) { const text = String(value == null ? '' : value); return /^[=+\-@]/.test(text) ? "'" + text : text; }
