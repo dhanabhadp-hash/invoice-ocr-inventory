@@ -1,5 +1,6 @@
 const CONFIG = Object.freeze({
   SPREADSHEET_ID: '1ogoM0vXPndiRcjNgbkN3Bsitd5JTcoT4rsj7hkerZqQ',
+  SPREADSHEET_URL: 'https://docs.google.com/spreadsheets/d/1ogoM0vXPndiRcjNgbkN3Bsitd5JTcoT4rsj7hkerZqQ/edit?usp=drivesdk',
   SHEET_NAME: 'Sheet1',
   DRIVE_FOLDER_PROPERTY: 'INV_OCR_DRIVE_FOLDER_ID',
   BRIDGE_TOKEN_PROPERTY: 'MANUS_BRIDGE_TOKEN',
@@ -19,28 +20,34 @@ function doPost(e) {
       validatePayload_(body.payload);
       return jsonResponse_({ ok: true, data: saveDriveFile_(body.payload) });
     }
+    if (body.action === 'checkSheet') {
+      return jsonResponse_({ ok: true, data: { spreadsheetId: CONFIG.SPREADSHEET_ID, sheetName: getTargetSheet_().getName() } });
+    }
     if (body.action === 'saveInvoice') return jsonResponse_(saveInvoice(body.payload));
     throw new Error('ไม่รู้จัก bridge action');
   } catch (error) { return jsonResponse_({ ok: false, error: error.message || String(error) }); }
 }
 function jsonResponse_(body) { return ContentService.createTextOutput(JSON.stringify(body)).setMimeType(ContentService.MimeType.JSON); }
+function getTargetSheet_() {
+  const workbook = SpreadsheetApp.openByUrl(CONFIG.SPREADSHEET_URL);
+  return workbook.getSheetByName(CONFIG.SHEET_NAME) || workbook.getSheets()[0] || workbook.insertSheet(CONFIG.SHEET_NAME);
+}
 function setup() {
-  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_NAME) || SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).insertSheet(CONFIG.SHEET_NAME);
+  const sheet = getTargetSheet_();
   if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, CONFIG.HEADERS.length).setValues([CONFIG.HEADERS]);
   sheet.setFrozenRows(1);
   PropertiesService.getScriptProperties().setProperty('INV_OCR_SETUP_AT', new Date().toISOString());
   return { ok: true, message: 'Setup complete. Set MANUS_BRIDGE_TOKEN and optionally INV_OCR_DRIVE_FOLDER_ID in Script Properties.' };
 }
 function getConfig() {
-  return { ok: true, data: { configured: Boolean(PropertiesService.getScriptProperties().getProperty(CONFIG.BRIDGE_TOKEN_PROPERTY)), sheetName: CONFIG.SHEET_NAME, provider: 'Manus OCR bridge' } };
+  return { ok: true, data: { configured: Boolean(PropertiesService.getScriptProperties().getProperty(CONFIG.BRIDGE_TOKEN_PROPERTY)), sheetName: getTargetSheet_().getName(), provider: 'Manus OCR bridge' } };
 }
 function saveInvoice(payload) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     if (!payload || !Array.isArray(payload.items) || !payload.items.length) throw new Error('ไม่พบรายการสินค้า');
-    const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_NAME);
-    if (!sheet) throw new Error('ไม่พบชีตปลายทาง: ' + CONFIG.SHEET_NAME);
+    const sheet = getTargetSheet_();
     const normalized = normalizeInvoice_(payload);
     if (!normalized.items.length || normalized.items.some(item => !item.productName || item.quantity <= 0 || item.unitPriceInclVat < 0 || item.totalPriceInclVat < 0)) throw new Error('กรุณากรอกชื่อสินค้า จำนวน และราคาที่ถูกต้อง');
     const invoice = normalized.invoice || {};
