@@ -40,7 +40,32 @@ function parseModelJson(content){
     throw new Error('Manus OCR คืน JSON ไม่ถูกต้อง');
   }
 }
-async function ocr(file) { const stored=await storeObject(file.base64,file.mimeType,file.fileName);const prompt='อ่านข้อความจากใบกำกับภาษี/บิล inventory ภาษาไทยหรืออังกฤษ แล้วคืน JSON ตาม schema เท่านั้น ห้ามใส่ Markdown หรือคำอธิบาย. vatStatus เป็น inclusive เมื่อรวม VAT แล้ว, exclusive เมื่อมีหลักฐานชัดเจนว่าไม่รวม VAT, มิฉะนั้น unknown. ราคาที่ส่งออกต้องเป็น VAT 7% inclusive; ระบบจะคูณ 1.07 เมื่อ vatStatus=exclusive. รหัส GPU/TPU เป็นตัวเลข 5-8 หลัก';const body=await manus('/v1/chat/completions',{method:'POST',body:JSON.stringify({model:process.env.MANUS_OCR_MODEL||'gemini-3-flash-preview',messages:[{role:'system',content:'คุณเป็นระบบ OCR ใบกำกับภาษีที่คืนข้อมูล JSON เท่านั้น ห้ามใช้ code fence'},{role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:stored.downloadUrl,detail:'high'}}]}],temperature:0.1,response_format:{type:'json_schema',json_schema:{name:'invoice_ocr',strict:true,schema}}})});const text=body.choices?.[0]?.message?.content;if(!text)throw new Error('Manus OCR ไม่คืนผลลัพธ์');const extracted=parseModelJson(text);const normalized=normalize(extracted);return {data:{...normalized,invoice:{...normalized.invoice,imageUrl:''},storage:stored}};}
+function modelText(body){
+  const message=body.choices?.[0]?.message||{};
+  const content=message.content ?? body.output_text ?? body.text;
+  if(Array.isArray(content)) return content.map(x=>typeof x==='string'?x:(x?.text||x?.content||'')).join('');
+  return typeof content==='string'?content:'';
+}
+async function visionRequest(stored,prompt,retry){
+  const body=await manus('/v1/chat/completions',{method:'POST',body:JSON.stringify({model:process.env.MANUS_OCR_MODEL||'gemini-3-flash-preview',messages:[{role:'system',content:'คุณเป็นระบบ OCR ใบกำกับภาษี คืนค่าเป็น JSON object เท่านั้น ห้ามใช้ Markdown, code fence หรือคำอธิบาย'},{role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:stored.downloadUrl,detail:'high'}}]}],temperature:retry?0:0.1,response_format:retry?{type:'json_object'}:{type:'json_schema',json_schema:{name:'invoice_ocr',strict:true,schema}}})});
+  const text=modelText(body);
+  if(!text.trim()) throw new Error('Manus OCR ไม่คืนผลลัพธ์');
+  return parseModelJson(text);
+}
+async function ocr(file) {
+  const stored=await storeObject(file.base64,file.mimeType,file.fileName);
+  const prompt='อ่านข้อความจากใบกำกับภาษี/บิล inventory ภาษาไทยหรืออังกฤษ แล้วคืน JSON ตาม schema เท่านั้น. vatStatus เป็น inclusive เมื่อรวม VAT แล้ว, exclusive เมื่อมีหลักฐานชัดเจนว่าไม่รวม VAT, มิฉะนั้น unknown. ราคาที่ส่งออกต้องเป็น VAT 7% inclusive; ระบบจะคูณ 1.07 เมื่อ vatStatus=exclusive. รหัส GPU/TPU เป็นตัวเลข 5-8 หลัก หากอ่านไม่ได้ให้ใช้ค่าว่างหรือ 0 ห้ามเดา';
+  let extracted;
+  let firstError;
+  try { extracted=await visionRequest(stored,prompt,false); }
+  catch(error) { firstError=error; }
+  if(!extracted){
+    try { extracted=await visionRequest(stored,prompt+' ตรวจสอบอีกครั้งและตอบเป็น JSON object เพียว ๆ เท่านั้น',true); }
+    catch(error) { throw new Error(error.message||firstError?.message||'Manus OCR ไม่คืนผลลัพธ์'); }
+  }
+  const normalized=normalize(extracted);
+  return {data:{...normalized,invoice:{...normalized.invoice,imageUrl:''},storage:stored}};
+}
 async function bridge(action,payload){
   if(!GOOGLE_APPS_SCRIPT_URL||!GOOGLE_APPS_SCRIPT_TOKEN)throw new Error('Google Apps Script bridge is not configured');
   const r=await fetch(GOOGLE_APPS_SCRIPT_URL,{method:'POST',redirect:'manual',headers:{'content-type':'application/json'},body:JSON.stringify({token:GOOGLE_APPS_SCRIPT_TOKEN,action,payload})});
