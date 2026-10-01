@@ -38,6 +38,7 @@ function setup() {
   const sheet = getTargetSheet_();
   if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, CONFIG.HEADERS.length).setValues([CONFIG.HEADERS]);
   sheet.setFrozenRows(1);
+  PropertiesService.getScriptProperties().setProperty(CONFIG.DRIVE_FOLDER_PROPERTY, CONFIG.DRIVE_FOLDER_ID);
   PropertiesService.getScriptProperties().setProperty('INV_OCR_SETUP_AT', new Date().toISOString());
   return { ok: true, message: 'Setup complete. Set MANUS_BRIDGE_TOKEN and optionally INV_OCR_DRIVE_FOLDER_ID in Script Properties.' };
 }
