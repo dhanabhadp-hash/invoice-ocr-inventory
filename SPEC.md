@@ -18,9 +18,11 @@ Build a public-link web app for mobile and tablet invoice upload. Manus handles 
 - Google Sheets columns A:N unchanged.
 
 ## Functional behavior
-The app accepts JPG, PNG, WEBP and PDF up to 12 MB, previews the selection, sends it to `POST /api/ocr`, displays structured editable invoice and product rows, shows VAT/arithmetic/code warnings, and sends the reviewed payload to `POST /api/save`. OCR output includes company, tax ID, invoice number/date, salesperson, GPU/TPU codes, product, quantity, VAT-inclusive unit/line/grand totals, and Drive image URL.
+The app accepts JPG, PNG, WEBP and PDF up to 12 MB, previews the selection, sends it to `POST /api/ocr`, displays structured editable invoice and product rows, shows VAT/arithmetic warnings, and sends the reviewed payload to `POST /api/save`. OCR output includes company, tax ID, invoice number/date, salesperson, GPU/TPU codes, product, quantity, VAT-inclusive unit/line/grand totals, and Drive image URL. GPU/TPU values may use `G:`/`T:` shorthand; only 5–8 digit codes are retained and masked/unreadable values remain blank.
 
-The bridge writes the source image to Drive and appends one row per product item to the configured sheet. The server validates MIME/size, uses a signed Manus-storage URL for Vision OCR, applies 1.07 only when `vatStatus=exclusive`, flags unknown VAT, rejects invalid reviewed rows, and sanitizes formula-like cell text.
+VAT-inclusive evidence on the source bill (VAT 7%, ภาษีมูลค่าเพิ่ม, ราคารวม VAT, or a VAT-inclusive grand total) takes precedence and preserves OCR prices exactly. The server applies 1.07 only for an explicit before-VAT or VAT-added-separately indication. Save success clears the file, preview, and reviewed data; save failure retains all reviewed values. Status and error notifications are centered persistent modals with no automatic timeout and are replaced by the next successful OCR/load or save result.
+
+The bridge writes the source image to Drive and appends one row per product item to the configured sheet. The server validates MIME/size, uses a signed Manus-storage URL for Vision OCR, applies 1.07 only when `vatStatus=exclusive`, flags unknown VAT, normalizes shorthand GPU/TPU fields, rejects invalid reviewed rows, and sanitizes formula-like cell text.
 
 ## Project structure
 - `server.js` — Manus API server, Vision OCR, Manus temporary storage, route handlers.

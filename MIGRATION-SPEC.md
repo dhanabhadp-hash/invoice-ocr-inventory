@@ -24,8 +24,8 @@ Input: `{invoice,items,warnings}` after user review. Output: `{ok,data:{rowsSave
 ## Data rules
 - Google Sheets remains the source of truth with columns A:N unchanged.
 - One row per product item; invoice-level values repeat per row.
-- Monetary fields are VAT-inclusive. `exclusive` applies 1.07; `unknown` produces a visible warning.
-- Tax ID is 13 digits when present; GPU/TPU codes are 5–8 digits when present.
+- Monetary fields are VAT-inclusive. If the invoice already states VAT 7%/VAT included, preserve the printed values; `exclusive` applies 1.07 only when VAT is explicitly added separately; `unknown` produces a visible warning.
+- Tax ID is 13 digits when present; GPU/TPU codes are normalized from labels such as `G:`/`T:` and retained only when they contain 5–8 digits.
 - Formula-like cell values are prefixed with an apostrophe before Sheets write.
 
 ## Commands
