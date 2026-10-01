@@ -3,6 +3,8 @@ const CONFIG = Object.freeze({
   SPREADSHEET_URL: 'https://docs.google.com/spreadsheets/d/1ogoM0vXPndiRcjNgbkN3Bsitd5JTcoT4rsj7hkerZqQ/edit?usp=drivesdk',
   SHEET_NAME: 'Sheet1',
   DRIVE_FOLDER_PROPERTY: 'INV_OCR_DRIVE_FOLDER_ID',
+  DRIVE_FOLDER_ID: '1_cwXmxuHj5enUq3VWNSWDlXTz_JpnwlY',
+  DRIVE_FOLDER_NAME: 'Inventory_OCR_Uploads',
   BRIDGE_TOKEN_PROPERTY: 'MANUS_BRIDGE_TOKEN',
   MAX_BYTES: 12 * 1024 * 1024,
   HEADERS: ['ATimestamp','BInvoice No','CCompany Name','DTax ID','EInvoice Date','FSalesperson','GGPU Code','HTPU Code','IProduct Name','JQuantity','KUnit Price (Incl. VAT)','LTotal Price (Incl. VAT)','MGrand Total (Incl. VAT)','NImage URL']
@@ -63,7 +65,7 @@ function validatePayload_(payload) {
   if (Utilities.base64Decode(payload.base64).length > CONFIG.MAX_BYTES) throw new Error('ไฟล์ใหญ่เกิน 12 MB');
 }
 function saveDriveFile_(payload) {
-  const folderId = PropertiesService.getScriptProperties().getProperty(CONFIG.DRIVE_FOLDER_PROPERTY);
+  const folderId = PropertiesService.getScriptProperties().getProperty(CONFIG.DRIVE_FOLDER_PROPERTY) || CONFIG.DRIVE_FOLDER_ID;
   const blob = Utilities.newBlob(Utilities.base64Decode(payload.base64), payload.mimeType, payload.fileName || ('invoice-' + Date.now()));
   const file = folderId ? DriveApp.getFolderById(folderId).createFile(blob) : DriveApp.createFile(blob);
   return { id: file.getId(), url: file.getUrl() };
