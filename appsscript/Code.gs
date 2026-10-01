@@ -66,7 +66,7 @@ function validatePayload_(payload) {
   if (Utilities.base64Decode(payload.base64).length > CONFIG.MAX_BYTES) throw new Error('ไฟล์ใหญ่เกิน 12 MB');
 }
 function saveDriveFile_(payload) {
-  const folderId = PropertiesService.getScriptProperties().getProperty(CONFIG.DRIVE_FOLDER_PROPERTY) || CONFIG.DRIVE_FOLDER_ID;
+  const folderId = CONFIG.DRIVE_FOLDER_ID;
   const blob = Utilities.newBlob(Utilities.base64Decode(payload.base64), payload.mimeType, payload.fileName || ('invoice-' + Date.now()));
   const file = folderId ? DriveApp.getFolderById(folderId).createFile(blob) : DriveApp.createFile(blob);
   return { id: file.getId(), url: file.getUrl() };
