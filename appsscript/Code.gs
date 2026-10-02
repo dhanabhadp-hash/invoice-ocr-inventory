@@ -3,6 +3,7 @@ const CONFIG = Object.freeze({
   SPREADSHEET_URL: 'https://docs.google.com/spreadsheets/d/1ogoM0vXPndiRcjNgbkN3Bsitd5JTcoT4rsj7hkerZqQ/edit?usp=drivesdk',
   SHEET_NAME: 'Sheet1',
   DRIVE_FOLDER_PROPERTY: 'INV_OCR_DRIVE_FOLDER_ID',
+  DRIVE_PARENT_FOLDER_ID: '1XcEv1s4JyvIh02-KmVJ-sA8lEAmyGTtJ',
   DRIVE_FOLDER_ID: '1_cwXmxuHj5enUq3VWNSWDlXTz_JpnwlY',
   DRIVE_FOLDER_NAME: 'Inventory_OCR_Uploads',
   BRIDGE_TOKEN_PROPERTY: 'MANUS_BRIDGE_TOKEN',
@@ -22,6 +23,10 @@ function doPost(e) {
       validatePayload_(body.payload);
       return jsonResponse_({ ok: true, data: saveDriveFile_(body.payload) });
     }
+    if (body.action === 'checkDriveFolder') {
+      const folder = getUploadFolder_();
+      return jsonResponse_({ ok: true, data: { folderId: folder.getId(), folderName: folder.getName(), parentFolderId: CONFIG.DRIVE_PARENT_FOLDER_ID } });
+    }
     if (body.action === 'checkSheet') {
       return jsonResponse_({ ok: true, data: { spreadsheetId: CONFIG.SPREADSHEET_ID, sheetName: getTargetSheet_().getName() } });
     }
@@ -36,14 +41,19 @@ function getTargetSheet_() {
 }
 function setup() {
   const sheet = getTargetSheet_();
+  const folder = getUploadFolder_();
   if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, CONFIG.HEADERS.length).setValues([CONFIG.HEADERS]);
   sheet.setFrozenRows(1);
   PropertiesService.getScriptProperties().setProperty(CONFIG.DRIVE_FOLDER_PROPERTY, CONFIG.DRIVE_FOLDER_ID);
   PropertiesService.getScriptProperties().setProperty('INV_OCR_SETUP_AT', new Date().toISOString());
-  return { ok: true, message: 'Setup complete. Set MANUS_BRIDGE_TOKEN and optionally INV_OCR_DRIVE_FOLDER_ID in Script Properties.' };
+  return { ok: true, message: 'Setup complete. Upload folder: ' + folder.getName() + ' (' + folder.getId() + ')' };
 }
 function getConfig() {
   return { ok: true, data: { configured: Boolean(PropertiesService.getScriptProperties().getProperty(CONFIG.BRIDGE_TOKEN_PROPERTY)), sheetName: getTargetSheet_().getName(), provider: 'Manus OCR bridge' } };
+}
+function checkDriveFolder() {
+  const folder = getUploadFolder_();
+  return { ok: true, data: { folderId: folder.getId(), folderName: folder.getName(), parentFolderId: CONFIG.DRIVE_PARENT_FOLDER_ID } };
 }
 function saveInvoice(payload) {
   const lock = LockService.getScriptLock();
@@ -66,10 +76,18 @@ function validatePayload_(payload) {
   if (Utilities.base64Decode(payload.base64).length > CONFIG.MAX_BYTES) throw new Error('ไฟล์ใหญ่เกิน 12 MB');
 }
 function saveDriveFile_(payload) {
-  const folderId = CONFIG.DRIVE_FOLDER_ID;
+  const folder = getUploadFolder_();
   const blob = Utilities.newBlob(Utilities.base64Decode(payload.base64), payload.mimeType, payload.fileName || ('invoice-' + Date.now()));
-  const file = folderId ? DriveApp.getFolderById(folderId).createFile(blob) : DriveApp.createFile(blob);
-  return { id: file.getId(), url: file.getUrl() };
+  const file = folder.createFile(blob);
+  return { id: file.getId(), url: file.getUrl(), folderId: folder.getId(), folderName: folder.getName() };
+}
+function getUploadFolder_() {
+  const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+  const parents = folder.getParents();
+  let isChild = false;
+  while (parents.hasNext()) if (parents.next().getId() === CONFIG.DRIVE_PARENT_FOLDER_ID) { isChild = true; break; }
+  if (!isChild) throw new Error('โฟลเดอร์อัปโหลดไม่ใช่โฟลเดอร์ย่อยของ OCR Inventory ตามที่กำหนด');
+  return folder;
 }
 function normalizeInvoice_(data) {
   data = data || {};
