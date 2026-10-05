@@ -1,7 +1,7 @@
 const CONFIG = Object.freeze({
   SPREADSHEET_ID: '1ogoM0vXPndiRcjNgbkN3Bsitd5JTcoT4rsj7hkerZqQ',
   SPREADSHEET_URL: 'https://docs.google.com/spreadsheets/d/1ogoM0vXPndiRcjNgbkN3Bsitd5JTcoT4rsj7hkerZqQ/edit?usp=drivesdk',
-  SHEET_NAME: 'Sheet1',
+  SHEET_NAME: 'บิล Inventory',
   DRIVE_FOLDER_PROPERTY: 'INV_OCR_DRIVE_FOLDER_ID',
   DRIVE_PARENT_FOLDER_ID: '1XcEv1s4JyvIh02-KmVJ-sA8lEAmyGTtJ',
   DRIVE_FOLDER_ID: '1_cwXmxuHj5enUq3VWNSWDlXTz_JpnwlY',
@@ -37,7 +37,9 @@ function doPost(e) {
 function jsonResponse_(body) { return ContentService.createTextOutput(JSON.stringify(body)).setMimeType(ContentService.MimeType.JSON); }
 function getTargetSheet_() {
   const workbook = SpreadsheetApp.openByUrl(CONFIG.SPREADSHEET_URL);
-  return workbook.getSheetByName(CONFIG.SHEET_NAME) || workbook.getSheets()[0] || workbook.insertSheet(CONFIG.SHEET_NAME);
+  const sheet = workbook.getSheetByName(CONFIG.SHEET_NAME);
+  if (!sheet) throw new Error('ไม่พบแท็บปลายทาง: ' + CONFIG.SHEET_NAME);
+  return sheet;
 }
 function setup() {
   const sheet = getTargetSheet_();
@@ -66,8 +68,9 @@ function saveInvoice(payload) {
     const invoice = normalized.invoice || {};
     const safe = value => sanitizeCell_(value);
     const rows = normalized.items.map(item => [new Date(), safe(invoice.invoiceNo), safe(invoice.companyName), safe(invoice.taxId), safe(invoice.invoiceDate), safe(invoice.salesperson), safe(item.gpuCode), safe(item.tpuCode), safe(item.productName), item.quantity, item.unitPriceInclVat, item.totalPriceInclVat, invoice.grandTotalInclVat, safe(invoice.imageUrl)]);
-    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, CONFIG.HEADERS.length).setValues(rows);
-    return { ok: true, data: { rowsSaved: rows.length } };
+    const firstRow = sheet.getLastRow() + 1;
+    sheet.getRange(firstRow, 1, rows.length, CONFIG.HEADERS.length).setValues(rows);
+    return { ok: true, data: { rowsSaved: rows.length, spreadsheetId: CONFIG.SPREADSHEET_ID, sheetName: sheet.getName(), firstRow, lastRow: firstRow + rows.length - 1 } };
   } finally { lock.releaseLock(); }
 }
 function validatePayload_(payload) {
