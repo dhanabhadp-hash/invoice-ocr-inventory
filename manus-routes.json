@@ -1,1 +1,1 @@
-{"routes":[{"path":"/","title":"Invoice OCR Inventory"}]}
+{"routes":[{"path":"/","title":"Invoice OCR Inventory"},{"path":"/records","title":"OCR Records"}]}

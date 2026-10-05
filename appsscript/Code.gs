@@ -23,6 +23,8 @@ function doPost(e) {
       validatePayload_(body.payload);
       return jsonResponse_({ ok: true, data: saveDriveFile_(body.payload) });
     }
+    if (body.action === 'listInvoices') return jsonResponse_({ ok: true, data: listInvoices_() });
+    if (body.action === 'getImage') return jsonResponse_({ ok: true, data: getImage_(body.payload) });
     if (body.action === 'checkDriveFolder') {
       const folder = getUploadFolder_();
       return jsonResponse_({ ok: true, data: { folderId: folder.getId(), folderName: folder.getName(), parentFolderId: CONFIG.DRIVE_PARENT_FOLDER_ID } });
@@ -72,6 +74,29 @@ function saveInvoice(payload) {
     sheet.getRange(firstRow, 1, rows.length, CONFIG.HEADERS.length).setValues(rows);
     return { ok: true, data: { rowsSaved: rows.length, spreadsheetId: CONFIG.SPREADSHEET_ID, sheetName: sheet.getName(), firstRow, lastRow: firstRow + rows.length - 1 } };
   } finally { lock.releaseLock(); }
+}
+function listInvoices_() {
+  const sheet = getTargetSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { invoices: [] };
+  const values = sheet.getRange(2, 1, lastRow - 1, CONFIG.HEADERS.length).getDisplayValues();
+  const grouped = {};
+  values.forEach(row => {
+    const invoiceNo = String(row[1] || '').trim();
+    const companyName = String(row[2] || '').trim();
+    const key = [invoiceNo, companyName, row[4] || '', row[0] || ''].join('|');
+    if (!grouped[key]) grouped[key] = { createdAt: row[0] || '', invoiceNo, companyName, taxId: row[3] || '', invoiceDate: row[4] || '', salesperson: row[5] || '', grandTotalInclVat: row[12] || '', imageUrl: row[13] || '', items: [] };
+    grouped[key].items.push({ gpuCode: row[6] || '', tpuCode: row[7] || '', productName: row[8] || '', quantity: row[9] || '', unitPriceInclVat: row[10] || '', totalPriceInclVat: row[11] || '' });
+    if (!grouped[key].imageUrl && row[13]) grouped[key].imageUrl = row[13];
+  });
+  return { invoices: Object.keys(grouped).map(key => grouped[key]).reverse() };
+}
+function getImage_(payload) {
+  const fileId = String(payload && payload.fileId || '').trim();
+  if (!/^[a-zA-Z0-9_-]{10,}$/.test(fileId)) throw new Error('รหัสไฟล์ภาพไม่ถูกต้อง');
+  const file = DriveApp.getFileById(fileId);
+  const blob = file.getBlob();
+  return { mimeType: blob.getContentType(), base64: Utilities.base64Encode(blob.getBytes()), fileName: file.getName() };
 }
 function validatePayload_(payload) {
   if (!payload || !payload.base64 || !payload.mimeType) throw new Error('กรุณาเลือกไฟล์ภาพบิล');
