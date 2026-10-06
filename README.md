@@ -11,6 +11,8 @@ The published application uses Manus Vision OCR and the Google Apps Script bridg
 
 `appsscript/Code.gs` now validates that the configured upload folder is the specified child of the specified parent. It does not fall back to Drive root or another Script Property folder.
 
+Google Sheets persistence is locked to the existing tab `บิล Inventory`; the bridge rejects a missing target tab instead of silently falling back to another tab. Successful saves return the spreadsheet ID, tab name, and appended row range.
+
 ## Apply the bridge fix
 
 1. Open the Google Apps Script project that serves the configured bridge URL.
